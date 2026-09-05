@@ -1,7 +1,0 @@
-com\ecommerce\OrderController.class
-com\ecommerce\OrderRepository.class
-com\ecommerce\Product.class
-com\ecommerce\ProductController.class
-com\ecommerce\Order.class
-com\ecommerce\BackendApplication.class
-com\ecommerce\ProductRepository.class
