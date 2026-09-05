@@ -34,7 +34,7 @@
         <div>
           <h1 class="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
             CloudMart
-            <span class="text-xs bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 px-2 py-0.5 rounded-full font-mono font-medium">v2.0-auth</span>
+            <span class="text-xs bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 px-2 py-0.5 rounded-full font-mono font-medium">v2.1-cart</span>
           </h1>
           <p class="text-xs text-slate-400">Node Hub • <span class="text-emerald-400 font-mono">Port 8081 Online</span></p>
         </div>
@@ -42,6 +42,12 @@
 
       <div class="flex items-center gap-3 w-full sm:w-auto flex-wrap">
         <div id="auth-actions" class="flex items-center gap-2"></div>
+
+        <!-- Cart Trigger Button -->
+        <button onclick="toggleCartDrawer(true)" class="relative inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 rounded-xl text-sm font-semibold transition border border-indigo-500/40 active:scale-95">
+          <i class="fa-solid fa-cart-shopping text-sm"></i> Cart
+          <span id="cart-badge" class="ml-1 px-2 py-0.2 bg-indigo-600 text-white rounded-full text-xs font-mono font-bold">0</span>
+        </button>
 
         <button onclick="openOrdersModal()" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 glass-card hover:bg-slate-800 text-slate-200 rounded-xl text-sm font-semibold transition border border-slate-700 active:scale-95">
           <i class="fa-solid fa-receipt text-indigo-400 text-xs"></i> Orders
@@ -102,6 +108,31 @@
 
     <!-- Product Grid -->
     <div id="product-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+  </div>
+
+  <!-- Cart Slide-over Drawer -->
+  <div id="cart-drawer-overlay" onclick="toggleCartDrawer(false)" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden transition-opacity"></div>
+  <div id="cart-drawer" class="fixed top-0 right-0 h-full w-full max-w-md bg-slate-900 border-l border-slate-800 z-50 transform translate-x-full transition-transform duration-300 flex flex-col shadow-2xl">
+    <div class="p-5 border-b border-slate-800 flex items-center justify-between">
+      <h3 class="text-lg font-bold text-white flex items-center gap-2">
+        <i class="fa-solid fa-cart-shopping text-indigo-400"></i> Active Cart
+      </h3>
+      <button onclick="toggleCartDrawer(false)" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+    </div>
+
+    <!-- Cart Items List -->
+    <div id="cart-items-container" class="flex-1 overflow-y-auto p-5 space-y-3"></div>
+
+    <!-- Drawer Footer -->
+    <div class="p-5 border-t border-slate-800 bg-slate-900/90 space-y-3">
+      <div class="flex justify-between items-center text-sm">
+        <span class="text-slate-400 font-medium">Subtotal</span>
+        <span class="text-base font-bold text-white" id="cart-subtotal">Rs. 0</span>
+      </div>
+      <button onclick="checkoutCart()" class="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm transition shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 active:scale-95">
+        <i class="fa-solid fa-bag-shopping"></i> Checkout All Items
+      </button>
+    </div>
   </div>
 
   <!-- Create Product Modal -->
@@ -172,7 +203,7 @@
     </div>
   </div>
 
-  <!-- Auth Modal (Login / Register) -->
+  <!-- Auth Modal -->
   <div id="auth-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
     <div class="glass-card bg-slate-900 border border-slate-700 w-full max-w-sm rounded-2xl p-6 shadow-2xl">
       <div class="flex justify-between items-center mb-4">
@@ -180,7 +211,6 @@
         <button onclick="closeAuthModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
       </div>
 
-      <!-- Toggle Tabs -->
       <div class="flex bg-slate-800 p-1 rounded-xl mb-4 text-xs font-semibold">
         <button id="tab-login" onclick="switchAuthMode('login')" class="flex-1 py-1.5 rounded-lg bg-indigo-600 text-white transition">Login</button>
         <button id="tab-register" onclick="switchAuthMode('register')" class="flex-1 py-1.5 rounded-lg text-slate-400 hover:text-white transition">Register</button>
@@ -210,6 +240,7 @@
     const AUTH_URL = 'http://localhost:8081/api/auth';
 
     let allProducts = [];
+    let cart = JSON.parse(localStorage.getItem('cloudmart_cart') || '[]');
     let currentAuthMode = 'login';
     let alertTimer = null;
 
@@ -336,6 +367,158 @@
       initAuth();
     }
 
+    // ================= CART SUBSYSTEM =================
+    function saveCart() {
+      localStorage.setItem('cloudmart_cart', JSON.stringify(cart));
+      updateCartUI();
+    }
+
+    function toggleCartDrawer(open) {
+      const drawer = document.getElementById('cart-drawer');
+      const overlay = document.getElementById('cart-drawer-overlay');
+      if (open) {
+        overlay.classList.remove('hidden');
+        drawer.classList.remove('translate-x-full');
+        renderCartItems();
+      } else {
+        overlay.classList.add('hidden');
+        drawer.classList.add('translate-x-full');
+      }
+    }
+
+    function addToCart(productId) {
+      const prod = allProducts.find(p => p.id === productId);
+      if (!prod || prod.stock <= 0) {
+        showAlert('Product is out of stock!', 'amber');
+        return;
+      }
+
+      const existing = cart.find(i => i.productId === productId);
+      if (existing) {
+        if (existing.quantity >= prod.stock) {
+          showAlert('Cannot add more than available stock (' + prod.stock + ')', 'amber');
+          return;
+        }
+        existing.quantity += 1;
+      } else {
+        cart.push({
+          productId: prod.id,
+          name: prod.name,
+          price: prod.price,
+          stock: prod.stock,
+          quantity: 1
+        });
+      }
+
+      saveCart();
+      showAlert('Added ' + prod.name + ' to cart!', 'emerald');
+    }
+
+    function updateCartQuantity(productId, delta) {
+      const item = cart.find(i => i.productId === productId);
+      if (!item) return;
+
+      item.quantity += delta;
+      if (item.quantity <= 0) {
+        cart = cart.filter(i => i.productId !== productId);
+      } else if (item.quantity > item.stock) {
+        item.quantity = item.stock;
+        showAlert('Max stock limit reached', 'amber');
+      }
+
+      saveCart();
+      renderCartItems();
+    }
+
+    function removeFromCart(productId) {
+      cart = cart.filter(i => i.productId !== productId);
+      saveCart();
+      renderCartItems();
+    }
+
+    function renderCartItems() {
+      const container = document.getElementById('cart-items-container');
+      if (!cart.length) {
+        container.innerHTML = 
+          '<div class="h-full flex flex-col items-center justify-center text-slate-500">' +
+            '<i class="fa-solid fa-basket-shopping text-4xl mb-3 text-slate-600"></i>' +
+            '<p class="text-sm font-medium">Your cart is empty.</p>' +
+          '</div>';
+        document.getElementById('cart-subtotal').textContent = 'Rs. 0';
+        return;
+      }
+
+      let subtotal = 0;
+      container.innerHTML = cart.map(item => {
+        const itemTotal = item.price * item.quantity;
+        subtotal += itemTotal;
+        return '<div class="glass-card rounded-xl p-3 flex items-center justify-between border border-slate-800">' +
+          '<div class="flex-1 pr-2">' +
+            '<h4 class="text-sm font-semibold text-white truncate">' + item.name + '</h4>' +
+            '<p class="text-xs text-indigo-400 font-mono">Rs. ' + Number(item.price).toLocaleString('en-IN') + '</p>' +
+          '</div>' +
+          '<div class="flex items-center gap-2">' +
+            '<button onclick="updateCartQuantity(' + item.productId + ', -1)" class="w-6 h-6 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs">-</button>' +
+            '<span class="text-xs font-mono font-bold text-white w-4 text-center">' + item.quantity + '</span>' +
+            '<button onclick="updateCartQuantity(' + item.productId + ', 1)" class="w-6 h-6 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs">+</button>' +
+            '<button onclick="removeFromCart(' + item.productId + ')" class="text-slate-500 hover:text-rose-400 ml-2 text-xs"><i class="fa-solid fa-trash"></i></button>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+
+      document.getElementById('cart-subtotal').textContent = 'Rs. ' + Number(subtotal).toLocaleString('en-IN');
+    }
+
+    function updateCartUI() {
+      const totalCount = cart.reduce((acc, curr) => acc + curr.quantity, 0);
+      document.getElementById('cart-badge').textContent = totalCount;
+    }
+
+    async function checkoutCart() {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        showAlert('Please sign in to checkout!', 'amber');
+        toggleCartDrawer(false);
+        openAuthModal();
+        return;
+      }
+
+      if (!cart.length) {
+        showAlert('Your cart is empty!', 'amber');
+        return;
+      }
+
+      const payload = {
+        items: cart.map(i => ({ productId: i.productId, quantity: i.quantity }))
+      };
+
+      try {
+        const res = await fetch(ORDERS_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+          },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          showAlert(data.error || 'Cart checkout failed', 'rose');
+          return;
+        }
+
+        showAlert('Checkout successful! ' + data.ordersCount + ' items processed.', 'emerald');
+        cart = [];
+        saveCart();
+        toggleCartDrawer(false);
+        loadProducts();
+      } catch (err) {
+        showAlert('Network error during checkout.', 'rose');
+      }
+    }
+
+    // ================= PRODUCT & ORDERS =================
     async function loadProducts() {
       const grid = document.getElementById('product-grid');
       const icon = document.getElementById('refresh-icon');
@@ -374,14 +557,19 @@
             '<h3 class="text-base font-bold text-white leading-snug">' + p.name + '</h3>' +
             '<p class="text-xs text-slate-400 mt-1 line-clamp-2">' + p.description + '</p>' +
           '</div>' +
-          '<div class="mt-5 pt-4 border-t border-slate-800 flex items-center justify-between">' +
+          '<div class="mt-5 pt-4 border-t border-slate-800 flex items-center justify-between gap-2">' +
             '<div>' +
               '<span class="text-[10px] text-slate-500 uppercase tracking-wider block font-semibold">Price</span>' +
               '<span class="text-lg font-black text-indigo-400">Rs. ' + Number(p.price).toLocaleString('en-IN') + '</span>' +
             '</div>' +
-            '<button onclick="placeQuickOrder(' + p.id + ')" class="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-indigo-600 hover:text-white text-xs font-semibold text-slate-300 transition-colors border border-slate-700 hover:border-transparent">' +
-              '<i class="fa-solid fa-bolt text-[10px] mr-1"></i> Quick Order' +
-            '</button>' +
+            '<div class="flex gap-2">' +
+              '<button onclick="addToCart(' + p.id + ')" class="px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 hover:text-white text-xs font-semibold text-indigo-300 transition border border-indigo-500/30">' +
+                '<i class="fa-solid fa-cart-plus text-[10px] mr-1"></i> Add' +
+              '</button>' +
+              '<button onclick="placeQuickOrder(' + p.id + ')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition border border-slate-700">' +
+                'Buy Now' +
+              '</button>' +
+            '</div>' +
           '</div>' +
         '</div>';
       }).join('');
@@ -445,12 +633,6 @@
         });
         const data = await res.json();
         if (!res.ok) {
-          if (res.status === 401 || res.status === 403) {
-            showAlert('Session expired. Please sign in again.', 'rose');
-            logout();
-            openAuthModal();
-            return;
-          }
           showAlert(data.error || 'Failed to place order', 'rose');
           return;
         }
@@ -511,6 +693,7 @@
     window.addEventListener('DOMContentLoaded', () => {
       loadProducts();
       initAuth();
+      updateCartUI();
     });
   </script>
 </body>

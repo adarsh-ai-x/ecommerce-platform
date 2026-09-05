@@ -23,6 +23,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.transaction.annotation.Transactional;
 import jakarta.persistence.*;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -49,6 +50,7 @@ public class BackendApplication {
             productRepo.save(new Product("Gaming Laptop", "RTX 4060, 16GB RAM, 512GB SSD", 75000.0, 10));
             productRepo.save(new Product("Mechanical Keyboard", "RGB Custom Switches", 3500.0, 25));
             productRepo.save(new Product("Wireless Mouse", "16000 DPI Optical Sensor", 1800.0, 40));
+            productRepo.save(new Product("Noise Cancelling Headphones", "Active ANC with 40h Battery", 6500.0, 15));
 
             if (userRepo.findByUsername("demo").isEmpty()) {
                 userRepo.save(new User("demo", "demo@cloudmart.com", encoder.encode("demo123"), "ROLE_USER"));
@@ -57,7 +59,6 @@ public class BackendApplication {
     }
 }
 
-// ================= JWT TOKEN CONSTANTS =================
 class JwtUtil {
     public static final Key SECRET_KEY = Keys.hmacShaKeyFor("cloudmart-super-secret-jwt-token-key-256-bits!".getBytes());
 
@@ -81,7 +82,6 @@ class JwtUtil {
     }
 }
 
-// ================= JWT FILTER =================
 class JwtAuthFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -101,15 +101,12 @@ class JwtAuthFilter extends OncePerRequestFilter {
                     );
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
-            } catch (Exception e) {
-                // Token invalid or expired - context remains null
-            }
+            } catch (Exception ignored) {}
         }
         filterChain.doFilter(request, response);
     }
 }
 
-// ================= SECURITY CONFIGURATION =================
 @Configuration
 @EnableWebSecurity
 class SecurityConfig {
@@ -128,7 +125,7 @@ class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/products/**").permitAll()
-                .requestMatchers("/api/orders/**").authenticated() // Require JWT for placing/viewing orders
+                .requestMatchers("/api/orders/**").authenticated()
                 .anyRequest().permitAll()
             )
             .addFilterBefore(new JwtAuthFilter(), UsernamePasswordAuthenticationFilter.class);
@@ -150,7 +147,6 @@ class SecurityConfig {
     }
 }
 
-// ================= USER & AUTH MODULE =================
 @Entity
 @Table(name = "users")
 class User {
@@ -239,7 +235,6 @@ class AuthController {
     }
 }
 
-// ================= PRODUCT MODULE =================
 @Entity
 @Table(name = "products")
 class Product {
@@ -282,7 +277,6 @@ class ProductController {
     public Product addProduct(@RequestBody Product product) { return productRepo.save(product); }
 }
 
-// ================= ORDER MODULE (WITH USER OWNERSHIP) =================
 @Entity
 @Table(name = "orders")
 class Order {
@@ -293,7 +287,7 @@ class Order {
     private String productName;
     private Integer quantity;
     private Double totalPrice;
-    private String username; // Track buyer identity
+    private String username;
     private LocalDateTime orderDate;
 
     public Order() {}
@@ -330,35 +324,72 @@ class OrderController {
         this.productRepo = productRepo;
     }
 
+    // Checkout: Supports single item OR multi-item Cart batch checkout
     @PostMapping
+    @Transactional
     public ResponseEntity<?> placeOrder(@RequestBody Map<String, Object> req) {
-        // Retrieve principal from Spring Security Context
         var auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Authentication required to checkout"));
         }
         String currentUser = auth.getName();
 
+        // Check if multi-item cart batch checkout
+        if (req.containsKey("items")) {
+            List<Map<String, Object>> items = (List<Map<String, Object>>) req.get("items");
+            if (items == null || items.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Cart is empty"));
+            }
+
+            List<Order> createdOrders = new ArrayList<>();
+
+            // 1. Validation phase (Atomic check)
+            for (Map<String, Object> it : items) {
+                Long pId = Long.valueOf(it.get("productId").toString());
+                int qty = Integer.parseInt(it.get("quantity").toString());
+                Optional<Product> pOpt = productRepo.findById(pId);
+                if (pOpt.isEmpty()) {
+                    return ResponseEntity.badRequest().body(Map.of("error", "Product SKU #" + pId + " not found"));
+                }
+                if (pOpt.get().getStock() < qty) {
+                    return ResponseEntity.badRequest().body(Map.of("error", "Insufficient stock for " + pOpt.get().getName()));
+                }
+            }
+
+            // 2. Execution phase (Stock decrement + order generation)
+            for (Map<String, Object> it : items) {
+                Long pId = Long.valueOf(it.get("productId").toString());
+                int qty = Integer.parseInt(it.get("quantity").toString());
+                Product product = productRepo.findById(pId).get();
+                product.setStock(product.getStock() - qty);
+                productRepo.save(product);
+
+                Order order = new Order(product.getId(), product.getName(), qty, product.getPrice() * qty, currentUser);
+                createdOrders.add(orderRepo.save(order));
+            }
+
+            return ResponseEntity.ok(Map.of(
+                "message", "Cart checkout completed successfully",
+                "ordersCount", createdOrders.size(),
+                "orders", createdOrders
+            ));
+        }
+
+        // Fallback for single quick order
         Long productId = Long.valueOf(req.get("productId").toString());
         int quantity = Integer.parseInt(req.getOrDefault("quantity", 1).toString());
 
         Optional<Product> prodOpt = productRepo.findById(productId);
-        if (prodOpt.isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Product not found"));
-        }
+        if (prodOpt.isEmpty()) return ResponseEntity.badRequest().body(Map.of("error", "Product not found"));
 
         Product product = prodOpt.get();
-        if (product.getStock() < quantity) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Insufficient stock"));
-        }
+        if (product.getStock() < quantity) return ResponseEntity.badRequest().body(Map.of("error", "Insufficient stock"));
 
         product.setStock(product.getStock() - quantity);
         productRepo.save(product);
 
         Order order = new Order(product.getId(), product.getName(), quantity, product.getPrice() * quantity, currentUser);
-        Order saved = orderRepo.save(order);
-
-        return ResponseEntity.ok(saved);
+        return ResponseEntity.ok(orderRepo.save(order));
     }
 
     @GetMapping
