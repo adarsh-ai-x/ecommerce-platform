@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CloudMart Console</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <style>
+    .glass-card {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .glass-card:hover {
+      border-color: rgba(99, 102, 241, 0.4);
+    }
+  </style>
+</head>
+<body class="bg-[#0b0f19] text-slate-100 min-h-screen font-sans selection:bg-indigo-500 selection:text-white">
+
+  <!-- Glow backdrop -->
+  <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[800px] h-[300px] bg-gradient-to-tr from-indigo-600/20 to-purple-600/20 blur-[130px] -z-10 pointer-events-none"></div>
+
+  <!-- Main Container -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <!-- Top Navigation -->
+    <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-6 border-b border-slate-800">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <i class="fa-solid fa-layer-group text-white text-lg"></i>
+        </div>
+        <div>
+          <h1 class="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+            CloudMart
+            <span class="text-xs bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 px-2 py-0.5 rounded-full font-mono font-medium">v1.0-live</span>
+          </h1>
+          <p class="text-xs text-slate-400">Node Hub • <span class="text-emerald-400 font-mono">Port 8081 Online</span></p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3 w-full sm:w-auto">
+        <button onclick="openOrdersModal()" class="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 glass-card hover:bg-slate-800 text-slate-200 rounded-xl text-sm font-semibold transition border border-slate-700 active:scale-95">
+          <i class="fa-solid fa-receipt text-indigo-400 text-xs"></i> View Orders
+        </button>
+        <button onclick="openModal()" class="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition shadow-lg shadow-indigo-600/20 active:scale-95">
+          <i class="fa-solid fa-plus text-xs"></i> New Product
+        </button>
+        <button onclick="loadProducts()" class="p-2.5 rounded-xl glass-card hover:bg-slate-800 text-slate-300 transition active:scale-95" title="Refresh">
+          <i class="fa-solid fa-rotate-right" id="refresh-icon"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Metrics Bar -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 my-6">
+      <div class="glass-card rounded-2xl p-4 flex items-center gap-4">
+        <div class="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center text-xl">
+          <i class="fa-solid fa-box-open"></i>
+        </div>
+        <div>
+          <p class="text-xs text-slate-400 font-medium">Catalog Items</p>
+          <p class="text-2xl font-bold text-white" id="stat-total">-</p>
+        </div>
+      </div>
+      <div class="glass-card rounded-2xl p-4 flex items-center gap-4">
+        <div class="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-xl">
+          <i class="fa-solid fa-warehouse"></i>
+        </div>
+        <div>
+          <p class="text-xs text-slate-400 font-medium">Total Inventory</p>
+          <p class="text-2xl font-bold text-white" id="stat-stock">-</p>
+        </div>
+      </div>
+      <div class="glass-card rounded-2xl p-4 flex items-center gap-4">
+        <div class="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center text-xl">
+          <i class="fa-solid fa-bolt"></i>
+        </div>
+        <div>
+          <p class="text-xs text-slate-400 font-medium">Order Subsystem</p>
+          <p class="text-sm font-semibold text-emerald-400 flex items-center gap-1.5 mt-1">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> Active (In-Memory)
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="flex flex-col sm:flex-row gap-3 mb-6">
+      <div class="relative flex-1">
+        <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
+        <input type="text" id="search-input" onkeyup="filterProducts()" placeholder="Search products by title or description..." 
+          class="w-full pl-10 pr-4 py-2.5 rounded-xl glass-card text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition" />
+      </div>
+    </div>
+
+    <!-- Alerts Banner -->
+    <div id="alert-box" class="hidden mb-6 p-4 rounded-xl text-sm flex items-center gap-3"></div>
+
+    <!-- Product Grid -->
+    <div id="product-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+  </div>
+
+  <!-- Create Product Modal -->
+  <div id="product-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+    <div class="glass-card bg-slate-900 border border-slate-700 w-full max-w-md rounded-2xl p-6 shadow-2xl">
+      <div class="flex justify-between items-center mb-5">
+        <h3 class="text-lg font-bold text-white">Create New Product</h3>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <form id="create-product-form" onsubmit="createProduct(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Product Name</label>
+          <input type="text" id="m-name" required class="w-full px-3.5 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm focus:border-indigo-500 focus:outline-none" placeholder="e.g. Ultra Monitor 27" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Description</label>
+          <textarea id="m-desc" rows="2" required class="w-full px-3.5 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm focus:border-indigo-500 focus:outline-none" placeholder="Brief specs or features"></textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Price (Rs.)</label>
+            <input type="number" id="m-price" step="0.01" required class="w-full px-3.5 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm focus:border-indigo-500 focus:outline-none" placeholder="2999" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Stock Units</label>
+            <input type="number" id="m-stock" required class="w-full px-3.5 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm focus:border-indigo-500 focus:outline-none" placeholder="15" />
+          </div>
+        </div>
+        <div class="flex gap-3 pt-3">
+          <button type="button" onclick="closeModal()" class="w-1/2 py-2.5 rounded-xl glass-card text-sm font-medium hover:bg-slate-800 transition">Cancel</button>
+          <button type="submit" class="w-1/2 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold transition">Save Item</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Orders History Modal -->
+  <div id="orders-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+    <div class="glass-card bg-slate-900 border border-slate-700 w-full max-w-3xl rounded-2xl p-6 shadow-2xl flex flex-col max-h-[85vh]">
+      <div class="flex justify-between items-center pb-4 border-b border-slate-800">
+        <div>
+          <h3 class="text-lg font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-receipt text-indigo-400"></i> Order Ledger History
+          </h3>
+          <p class="text-xs text-slate-400 mt-0.5">Recorded orders stored in H2 database</p>
+        </div>
+        <button onclick="closeOrdersModal()" class="text-slate-400 hover:text-white text-lg"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <!-- Orders Table Container -->
+      <div class="overflow-y-auto my-4 rounded-xl border border-slate-800">
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="bg-slate-800/60 text-slate-400 border-b border-slate-700 font-semibold uppercase tracking-wider">
+              <th class="p-3">Order ID</th>
+              <th class="p-3">Product Name</th>
+              <th class="p-3">Quantity</th>
+              <th class="p-3">Total Amount</th>
+              <th class="p-3">Timestamp</th>
+            </tr>
+          </thead>
+          <tbody id="orders-tbody" class="divide-y divide-slate-800 text-slate-300">
+            <!-- Dynamic rows will inject here -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pt-2 flex justify-end">
+        <button onclick="closeOrdersModal()" class="px-5 py-2 rounded-xl glass-card text-xs font-semibold hover:bg-slate-800 transition">Close Window</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:8081/api/products';
+    const ORDERS_URL = 'http://localhost:8081/api/orders';
+    let allProducts = [];
+
+    async function loadProducts() {
+      const grid = document.getElementById('product-grid');
+      const icon = document.getElementById('refresh-icon');
+      icon.classList.add('fa-spin');
+
+      try {
+        const res = await fetch(API_URL);
+        if (!res.ok) throw new Error('API down');
+        allProducts = await res.json();
+        renderProducts(allProducts);
+        updateMetrics(allProducts);
+        hideAlert();
+      } catch (err) {
+        showAlert('Backend Unreachable! Ensure port 8081 is running.', 'rose');
+        grid.innerHTML = '';
+      } finally {
+        setTimeout(function() { icon.classList.remove('fa-spin'); }, 500);
+      }
+    }
+
+    function renderProducts(items) {
+      const grid = document.getElementById('product-grid');
+      if (!items.length) {
+        grid.innerHTML = '<div class="col-span-full py-12 text-center text-slate-500 font-medium">No products found matching criteria.</div>';
+        return;
+      }
+
+      grid.innerHTML = items.map(function(p) {
+        return '<div class="glass-card rounded-2xl p-5 flex flex-col justify-between transition-all duration-300 shadow-lg">' +
+          '<div>' +
+            '<div class="flex items-center justify-between gap-2 mb-3">' +
+              '<span class="text-[11px] font-mono font-semibold bg-slate-800 text-slate-400 px-2 py-0.5 rounded-md border border-slate-700">SKU #' + p.id + '</span>' +
+              '<span class="text-[11px] font-medium px-2 py-0.5 rounded-full ' + (p.stock > 5 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/10 text-amber-400 border border-amber-500/30') + '">' +
+                (p.stock > 0 ? p.stock + ' In Stock' : 'Out of Stock') +
+              '</span>' +
+            '</div>' +
+            '<h3 class="text-base font-bold text-white leading-snug">' + p.name + '</h3>' +
+            '<p class="text-xs text-slate-400 mt-1 line-clamp-2">' + p.description + '</p>' +
+          '</div>' +
+          '<div class="mt-5 pt-4 border-t border-slate-800 flex items-center justify-between">' +
+            '<div>' +
+              '<span class="text-[10px] text-slate-500 uppercase tracking-wider block font-semibold">Price</span>' +
+              '<span class="text-lg font-black text-indigo-400">Rs. ' + Number(p.price).toLocaleString('en-IN') + '</span>' +
+            '</div>' +
+            '<button onclick="placeQuickOrder(' + p.id + ')" class="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-indigo-600 hover:text-white text-xs font-semibold text-slate-300 transition-colors border border-slate-700 hover:border-transparent">' +
+              '<i class="fa-solid fa-bolt text-[10px] mr-1"></i> Quick Order' +
+            '</button>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+    }
+
+    function filterProducts() {
+      const q = document.getElementById('search-input').value.toLowerCase();
+      const filtered = allProducts.filter(function(p) {
+        return p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q);
+      });
+      renderProducts(filtered);
+    }
+
+    function updateMetrics(items) {
+      document.getElementById('stat-total').textContent = items.length;
+      const totalUnits = items.reduce(function(acc, curr) { return acc + (curr.stock || 0); }, 0);
+      document.getElementById('stat-stock').textContent = totalUnits;
+    }
+
+    async function createProduct(e) {
+      e.preventDefault();
+      const payload = {
+        name: document.getElementById('m-name').value,
+        description: document.getElementById('m-desc').value,
+        price: parseFloat(document.getElementById('m-price').value),
+        stock: parseInt(document.getElementById('m-stock').value)
+      };
+
+      try {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error();
+        closeModal();
+        document.getElementById('create-product-form').reset();
+        showAlert('Product added successfully!', 'emerald');
+        loadProducts();
+      } catch (err) {
+        showAlert('Failed to save product.', 'rose');
+      }
+    }
+
+    async function placeQuickOrder(id) {
+      try {
+        const res = await fetch(ORDERS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productId: id, quantity: 1 })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showAlert(data.error || 'Failed to place order', 'rose');
+          return;
+        }
+        showAlert('Order placed! Order ID #' + data.id + ' for ' + data.productName, 'emerald');
+        loadProducts();
+      } catch (err) {
+        showAlert('Backend communication failed.', 'rose');
+      }
+    }
+
+    async function openOrdersModal() {
+      const modal = document.getElementById('orders-modal');
+      const tbody = document.getElementById('orders-tbody');
+      tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-500">Loading order records...</td></tr>';
+      modal.classList.remove('hidden');
+
+      try {
+        const res = await fetch(ORDERS_URL);
+        const orders = await res.json();
+
+        if (!orders.length) {
+          tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-slate-500">No orders placed yet. Click "Quick Order" on any item!</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = orders.map(function(o) {
+          const dateStr = o.orderDate ? new Date(o.orderDate).toLocaleString() : 'Just now';
+          return '<tr class="hover:bg-slate-800/40 transition">' +
+            '<td class="p-3 font-mono font-medium text-indigo-400">#ORD-' + o.id + '</td>' +
+            '<td class="p-3 font-semibold text-white">' + o.productName + '</td>' +
+            '<td class="p-3">' + o.quantity + '</td>' +
+            '<td class="p-3 font-medium text-emerald-400">Rs. ' + Number(o.totalPrice).toLocaleString('en-IN') + '</td>' +
+            '<td class="p-3 text-slate-400 text-[11px] font-mono">' + dateStr + '</td>' +
+          '</tr>';
+        }).join('');
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-rose-400">Failed to load order history from backend.</td></tr>';
+      }
+    }
+
+    function closeOrdersModal() {
+      document.getElementById('orders-modal').classList.add('hidden');
+    }
+
+    function showAlert(msg, color) {
+      const box = document.getElementById('alert-box');
+      box.className = 'mb-6 p-3.5 rounded-xl text-xs font-medium flex items-center gap-2 border bg-' + color + '-950/40 border-' + color + '-500/40 text-' + color + '-300';
+      box.innerHTML = '<i class="fa-solid fa-circle-info"></i> ' + msg;
+      box.classList.remove('hidden');
+      setTimeout(hideAlert, 4000);
+    }
+
+    function hideAlert() {
+      document.getElementById('alert-box').classList.add('hidden');
+    }
+
+    function openModal() { document.getElementById('product-modal').classList.remove('hidden'); }
+    function closeModal() { document.getElementById('product-modal').classList.add('hidden'); }
+
+    window.addEventListener('DOMContentLoaded', loadProducts);
+  </script>
+</body>
+</html>
