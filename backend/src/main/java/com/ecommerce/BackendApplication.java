@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -47,13 +48,19 @@ public class BackendApplication {
     @Bean
     CommandLineRunner initDatabase(ProductRepository productRepo, UserRepository userRepo, PasswordEncoder encoder) {
         return args -> {
-            productRepo.save(new Product("Gaming Laptop", "RTX 4060, 16GB RAM, 512GB SSD", 75000.0, 10));
-            productRepo.save(new Product("Mechanical Keyboard", "RGB Custom Switches", 3500.0, 25));
-            productRepo.save(new Product("Wireless Mouse", "16000 DPI Optical Sensor", 1800.0, 40));
-            productRepo.save(new Product("Noise Cancelling Headphones", "Active ANC with 40h Battery", 6500.0, 15));
+            if (productRepo.count() == 0) {
+                productRepo.save(new Product("Gaming Laptop", "RTX 4060, 16GB RAM, 512GB SSD", 75000.0, 10));
+                productRepo.save(new Product("Mechanical Keyboard", "RGB Custom Switches", 3500.0, 25));
+                productRepo.save(new Product("Wireless Mouse", "16000 DPI Optical Sensor", 1800.0, 40));
+                productRepo.save(new Product("Noise Cancelling Headphones", "Active ANC with 40h Battery", 6500.0, 15));
+            }
 
             if (userRepo.findByUsername("demo").isEmpty()) {
                 userRepo.save(new User("demo", "demo@cloudmart.com", encoder.encode("demo123"), "ROLE_USER"));
+            }
+
+            if (userRepo.findByUsername("admin").isEmpty()) {
+                userRepo.save(new User("admin", "admin@cloudmart.com", encoder.encode("admin123"), "ROLE_ADMIN"));
             }
         };
     }
@@ -124,7 +131,10 @@ class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/products/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
+                // Only ADMIN can create or modify products
+                .requestMatchers(HttpMethod.POST, "/api/products/**").hasAuthority("ROLE_ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/api/products/**").hasAuthority("ROLE_ADMIN")
                 .requestMatchers("/api/orders/**").authenticated()
                 .anyRequest().permitAll()
             )
@@ -275,6 +285,15 @@ class ProductController {
 
     @PostMapping
     public Product addProduct(@RequestBody Product product) { return productRepo.save(product); }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteProduct(@PathVariable Long id) {
+        if (!productRepo.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        productRepo.deleteById(id);
+        return ResponseEntity.ok(Map.of("message", "Product SKU #" + id + " deleted successfully"));
+    }
 }
 
 @Entity
@@ -324,7 +343,6 @@ class OrderController {
         this.productRepo = productRepo;
     }
 
-    // Checkout: Supports single item OR multi-item Cart batch checkout
     @PostMapping
     @Transactional
     public ResponseEntity<?> placeOrder(@RequestBody Map<String, Object> req) {
@@ -334,7 +352,6 @@ class OrderController {
         }
         String currentUser = auth.getName();
 
-        // Check if multi-item cart batch checkout
         if (req.containsKey("items")) {
             List<Map<String, Object>> items = (List<Map<String, Object>>) req.get("items");
             if (items == null || items.isEmpty()) {
@@ -343,7 +360,6 @@ class OrderController {
 
             List<Order> createdOrders = new ArrayList<>();
 
-            // 1. Validation phase (Atomic check)
             for (Map<String, Object> it : items) {
                 Long pId = Long.valueOf(it.get("productId").toString());
                 int qty = Integer.parseInt(it.get("quantity").toString());
@@ -356,7 +372,6 @@ class OrderController {
                 }
             }
 
-            // 2. Execution phase (Stock decrement + order generation)
             for (Map<String, Object> it : items) {
                 Long pId = Long.valueOf(it.get("productId").toString());
                 int qty = Integer.parseInt(it.get("quantity").toString());
@@ -375,7 +390,6 @@ class OrderController {
             ));
         }
 
-        // Fallback for single quick order
         Long productId = Long.valueOf(req.get("productId").toString());
         int quantity = Integer.parseInt(req.getOrDefault("quantity", 1).toString());
 
@@ -396,6 +410,12 @@ class OrderController {
     public List<Order> getUserOrders() {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()) return Collections.emptyList();
+        
+        // If user is ROLE_ADMIN, let them see all orders; otherwise return only their orders
+        boolean isAdmin = auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        if (isAdmin) {
+            return orderRepo.findAll();
+        }
         return orderRepo.findByUsernameOrderByOrderDateDesc(auth.getName());
     }
 }
