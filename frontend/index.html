@@ -34,7 +34,7 @@
         <div>
           <h1 class="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
             CloudMart
-            <span class="text-xs bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 px-2 py-0.5 rounded-full font-mono font-medium">v3.1-pipeline</span>
+            <span class="text-xs bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 px-2 py-0.5 rounded-full font-mono font-medium">v3.2-mgmt</span>
           </h1>
           <p class="text-xs text-slate-400">Node Hub • <span class="text-emerald-400 font-mono">Port 8081 Online</span></p>
         </div>
@@ -165,6 +165,43 @@
         <div class="flex gap-3 pt-3">
           <button type="button" onclick="closeModal()" class="w-1/2 py-2.5 rounded-xl glass-card text-sm font-medium hover:bg-slate-800 transition">Cancel</button>
           <button type="submit" class="w-1/2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-sm font-semibold transition">Save Item</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Edit Product Modal (Admin) -->
+  <div id="edit-product-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+    <div class="glass-card bg-slate-900 border border-slate-700 w-full max-w-md rounded-2xl p-6 shadow-2xl">
+      <div class="flex justify-between items-center mb-5">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-pen-to-square text-indigo-400 text-sm"></i> Edit Product Specs
+        </h3>
+        <button onclick="closeEditModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <form id="edit-product-form" onsubmit="submitEditProduct(event)" class="space-y-4">
+        <input type="hidden" id="edit-p-id" />
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Product Name</label>
+          <input type="text" id="edit-p-name" required class="w-full px-3.5 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm focus:border-indigo-500 focus:outline-none" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Description</label>
+          <textarea id="edit-p-desc" rows="2" required class="w-full px-3.5 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm focus:border-indigo-500 focus:outline-none"></textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Price (Rs.)</label>
+            <input type="number" id="edit-p-price" step="0.01" required class="w-full px-3.5 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm focus:border-indigo-500 focus:outline-none" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Stock Units</label>
+            <input type="number" id="edit-p-stock" required class="w-full px-3.5 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm focus:border-indigo-500 focus:outline-none" />
+          </div>
+        </div>
+        <div class="flex gap-3 pt-3">
+          <button type="button" onclick="closeEditModal()" class="w-1/2 py-2.5 rounded-xl glass-card text-sm font-medium hover:bg-slate-800 transition">Cancel</button>
+          <button type="submit" class="w-1/2 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold transition">Save Changes</button>
         </div>
       </form>
     </div>
@@ -569,9 +606,12 @@
       }
 
       grid.innerHTML = items.map(function(p) {
-        const deleteButtonHtml = isAdmin 
-          ? '<button onclick="deleteProduct(' + p.id + ')" class="text-slate-500 hover:text-rose-400 p-1 text-xs" title="Delete Product (Admin)"><i class="fa-solid fa-trash-can"></i></button>'
-          : '';
+        const adminActions = isAdmin ? 
+          '<div class="flex items-center gap-1.5">' +
+            '<button onclick="quickAddStock(' + p.id + ', ' + p.stock + ')" class="px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[10px] font-mono border border-emerald-500/40" title="Quick Refill +10 Units">+10 Stock</button>' +
+            '<button onclick="openEditModal(' + p.id + ')" class="text-slate-400 hover:text-indigo-400 p-1 text-xs" title="Edit Product"><i class="fa-solid fa-pen"></i></button>' +
+            '<button onclick="deleteProduct(' + p.id + ')" class="text-slate-400 hover:text-rose-400 p-1 text-xs" title="Delete Product"><i class="fa-solid fa-trash-can"></i></button>' +
+          '</div>' : '';
 
         return '<div class="glass-card rounded-2xl p-5 flex flex-col justify-between transition-all duration-300 shadow-lg">' +
           '<div>' +
@@ -581,7 +621,7 @@
                 '<span class="text-[11px] font-medium px-2 py-0.5 rounded-full ' + (p.stock > 5 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/10 text-amber-400 border border-amber-500/30') + '">' +
                   (p.stock > 0 ? p.stock + ' In Stock' : 'Out of Stock') +
                 '</span>' +
-                deleteButtonHtml +
+                adminActions +
               '</div>' +
             '</div>' +
             '<h3 class="text-base font-bold text-white leading-snug">' + p.name + '</h3>' +
@@ -617,6 +657,77 @@
       document.getElementById('stat-total').textContent = items.length;
       const totalUnits = items.reduce(function(acc, curr) { return acc + (curr.stock || 0); }, 0);
       document.getElementById('stat-stock').textContent = totalUnits;
+    }
+
+    async function quickAddStock(productId, currentStock) {
+      const token = localStorage.getItem('token');
+      try {
+        const res = await fetch(`${API_URL}/${productId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+          },
+          body: JSON.stringify({ stock: currentStock + 10 })
+        });
+        if (!res.ok) {
+          showAlert('Failed to update stock.', 'rose');
+          return;
+        }
+        showAlert('Refilled SKU #' + productId + ' (+10 Units)', 'emerald');
+        loadProducts();
+      } catch (err) {
+        showAlert('Network error updating stock.', 'rose');
+      }
+    }
+
+    function openEditModal(productId) {
+      const prod = allProducts.find(p => p.id === productId);
+      if (!prod) return;
+
+      document.getElementById('edit-p-id').value = prod.id;
+      document.getElementById('edit-p-name').value = prod.name;
+      document.getElementById('edit-p-desc').value = prod.description;
+      document.getElementById('edit-p-price').value = prod.price;
+      document.getElementById('edit-p-stock').value = prod.stock;
+
+      document.getElementById('edit-product-modal').classList.remove('hidden');
+    }
+
+    function closeEditModal() {
+      document.getElementById('edit-product-modal').classList.add('hidden');
+    }
+
+    async function submitEditProduct(e) {
+      e.preventDefault();
+      const token = localStorage.getItem('token');
+      const id = document.getElementById('edit-p-id').value;
+      const payload = {
+        name: document.getElementById('edit-p-name').value,
+        description: document.getElementById('edit-p-desc').value,
+        price: parseFloat(document.getElementById('edit-p-price').value),
+        stock: parseInt(document.getElementById('edit-p-stock').value)
+      };
+
+      try {
+        const res = await fetch(`${API_URL}/${id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+          },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          showAlert('Failed to update product details.', 'rose');
+          return;
+        }
+        closeEditModal();
+        showAlert('Product specs updated successfully!', 'emerald');
+        loadProducts();
+      } catch (err) {
+        showAlert('Network error saving updates.', 'rose');
+      }
     }
 
     async function createProduct(e) {
@@ -701,7 +812,6 @@
       }
     }
 
-    // ================= ORDER STATUS LIFECYCLE =================
     function getStatusBadge(status) {
       const s = status || 'PENDING';
       switch (s) {
@@ -734,7 +844,7 @@
         }
 
         showAlert('Order #' + orderId + ' updated to ' + newStatus, 'emerald');
-        openOrdersModal(); // Refresh modal table
+        openOrdersModal();
       } catch (err) {
         showAlert('Communication error updating status.', 'rose');
       }

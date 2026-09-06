@@ -133,6 +133,7 @@ class SecurityConfig {
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/products/**").hasAuthority("ROLE_ADMIN")
+                .requestMatchers(HttpMethod.PUT, "/api/products/**").hasAuthority("ROLE_ADMIN")
                 .requestMatchers(HttpMethod.DELETE, "/api/products/**").hasAuthority("ROLE_ADMIN")
                 .requestMatchers(HttpMethod.PATCH, "/api/orders/*/status").hasAuthority("ROLE_ADMIN")
                 .requestMatchers("/api/orders/**").authenticated()
@@ -266,8 +267,11 @@ class Product {
 
     public Long getId() { return id; }
     public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
     public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
     public Double getPrice() { return price; }
+    public void setPrice(Double price) { this.price = price; }
     public Integer getStock() { return stock; }
     public void setStock(Integer stock) { this.stock = stock; }
 }
@@ -285,6 +289,22 @@ class ProductController {
 
     @PostMapping
     public Product addProduct(@RequestBody Product product) { return productRepo.save(product); }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<?> updateProduct(@PathVariable Long id, @RequestBody Map<String, Object> updates) {
+        Optional<Product> prodOpt = productRepo.findById(id);
+        if (prodOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Product prod = prodOpt.get();
+        if (updates.containsKey("name")) prod.setName(updates.get("name").toString());
+        if (updates.containsKey("description")) prod.setDescription(updates.get("description").toString());
+        if (updates.containsKey("price")) prod.setPrice(Double.valueOf(updates.get("price").toString()));
+        if (updates.containsKey("stock")) prod.setStock(Integer.valueOf(updates.get("stock").toString()));
+
+        return ResponseEntity.ok(productRepo.save(prod));
+    }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteProduct(@PathVariable Long id) {
@@ -307,7 +327,7 @@ class Order {
     private Integer quantity;
     private Double totalPrice;
     private String username;
-    private String status; // PENDING, PROCESSING, SHIPPED, DELIVERED
+    private String status;
     private LocalDateTime orderDate;
 
     public Order() {}
