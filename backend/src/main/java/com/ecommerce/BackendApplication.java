@@ -132,9 +132,9 @@ class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
-                // Only ADMIN can create or modify products
                 .requestMatchers(HttpMethod.POST, "/api/products/**").hasAuthority("ROLE_ADMIN")
                 .requestMatchers(HttpMethod.DELETE, "/api/products/**").hasAuthority("ROLE_ADMIN")
+                .requestMatchers(HttpMethod.PATCH, "/api/orders/*/status").hasAuthority("ROLE_ADMIN")
                 .requestMatchers("/api/orders/**").authenticated()
                 .anyRequest().permitAll()
             )
@@ -147,7 +147,7 @@ class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOriginPatterns(List.of("*"));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
 
@@ -307,6 +307,7 @@ class Order {
     private Integer quantity;
     private Double totalPrice;
     private String username;
+    private String status; // PENDING, PROCESSING, SHIPPED, DELIVERED
     private LocalDateTime orderDate;
 
     public Order() {}
@@ -316,6 +317,7 @@ class Order {
         this.quantity = quantity;
         this.totalPrice = totalPrice;
         this.username = username;
+        this.status = "PENDING";
         this.orderDate = LocalDateTime.now();
     }
 
@@ -325,11 +327,14 @@ class Order {
     public Integer getQuantity() { return quantity; }
     public Double getTotalPrice() { return totalPrice; }
     public String getUsername() { return username; }
+    public String getStatus() { return status != null ? status : "PENDING"; }
+    public void setStatus(String status) { this.status = status; }
     public LocalDateTime getOrderDate() { return orderDate; }
 }
 
 interface OrderRepository extends JpaRepository<Order, Long> {
     List<Order> findByUsernameOrderByOrderDateDesc(String username);
+    List<Order> findAllByOrderByOrderDateDesc();
 }
 
 @RestController
@@ -411,11 +416,29 @@ class OrderController {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()) return Collections.emptyList();
         
-        // If user is ROLE_ADMIN, let them see all orders; otherwise return only their orders
         boolean isAdmin = auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
         if (isAdmin) {
-            return orderRepo.findAll();
+            return orderRepo.findAllByOrderByOrderDateDesc();
         }
         return orderRepo.findByUsernameOrderByOrderDateDesc(auth.getName());
+    }
+
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<?> updateOrderStatus(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        Optional<Order> orderOpt = orderRepo.findById(id);
+        if (orderOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        String newStatus = body.get("status");
+        if (newStatus == null || (!newStatus.equals("PENDING") && !newStatus.equals("PROCESSING") && !newStatus.equals("SHIPPED") && !newStatus.equals("DELIVERED"))) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid status value"));
+        }
+
+        Order order = orderOpt.get();
+        order.setStatus(newStatus);
+        orderRepo.save(order);
+
+        return ResponseEntity.ok(order);
     }
 }
